@@ -73,10 +73,10 @@ st.markdown("""
 # =========================================================
 
 try:
-    df = pd.read_csv("Dataset_GPA_Thuc_Te_250_Responses.csv")
+    df = pd.read_excel("Dataset_GPA_Thuc_Te_250_Responses.xlsx")
 
 except FileNotFoundError:
-    st.error("❌ Không tìm thấy file Dataset_GPA_Thuc_Te_250_Responses.csv")
+    st.error("❌ Không tìm thấy file Dataset_GPA_Thuc_Te_250_Responses.xlsx")
     st.stop()
 
 # =========================================================

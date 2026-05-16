@@ -1,153 +1,163 @@
-# =========================================================
-# AI GPA PREDICTOR - STREAMLIT APP
-# Author: ChatGPT (Fixed Version)
-# =========================================================
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score
+import os
 
-# =========================================================
-# CẤU HÌNH TRANG
-# =========================================================
+# 1. Cấu hình trang
 st.set_page_config(
-    page_title="AI GPA Predictor",
+    page_title="Dự Đoán GPA Sinh Viên",
     page_icon="🎓",
     layout="wide"
 )
 
-# CSS GIAO DIỆN
+# Tùy chỉnh CSS để giao diện đẹp hơn
 st.markdown("""
-<style>
-.main { background-color: #071421; color: white; }
-h1, h2, h3 { color: #FFD700; }
-[data-testid="stSidebar"] { background: linear-gradient(180deg, #0B1F33, #102A43); }
-.stMetric { background-color: #102A43; padding: 20px; border-radius: 15px; border: 1px solid #00D4FF; }
-</style>
-""", unsafe_allow_html=True)
+    <style>
+    .main {
+        background-color: #f5f7f9;
+    }
+    .stMetric {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-st.title("🎓 AI GPA Predictor Dashboard")
-st.markdown("### Dự đoán GPA sinh viên bằng Machine Learning")
-
-# =========================================================
-# ĐỌC DỮ LIỆU (Sửa lỗi: Đọc đúng file CSV bạn đã tải lên)
-# =========================================================
-try:
-    # Sử dụng đúng tên file thực tế trong thư mục của bạn
-    df = pd.read_csv("Dataset_GPA_Thuc_Te_250_Responses.xlsx - Dataset_GPA.csv")
+# 2. Hàm xử lý dữ liệu và huấn luyện
+@st.cache_resource
+def train_model(file_path):
+    if not os.path.exists(file_path):
+        return None, None, None
     
-    # Xử lý khoảng trắng thừa để tránh lỗi khi map dữ liệu
-    for col in ["Làm_Thêm", "Tham_Gia_CLB", "Hình_Thức_Học"]:
-        df[col] = df[col].astype(str).str.strip()
-except FileNotFoundError:
-    st.error("❌ Không tìm thấy file Dataset_GPA_Thuc_Te_250_Responses.xlsx - Dataset_GPA.csv")
+    df = pd.read_csv(file_path)
+    
+    # Tiền xử lý
+    df_ml = df.copy()
+    df_ml['Làm_Thêm'] = df_ml['Làm_Thêm'].map({'Có': 1, 'Không': 0})
+    df_ml['Tham_Gia_CLB'] = df_ml['Tham_Gia_CLB'].map({'Có': 1, 'Không': 0})
+    df_ml['Hình_Thức_Học'] = df_ml['Hình_Thức_Học'].map({'Tự học': 0, 'Học nhóm': 1})
+    
+    X = df_ml.drop('GPA', axis=1)
+    y = df_ml['GPA']
+    
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X, y)
+    
+    return model, df, X.columns.tolist()
+
+# Tải dữ liệu và mô hình
+model, original_df, feature_cols = train_model('Dataset_GPA_Thuc_Te_250_Responses.csv')
+
+if model is None:
+    st.error("❌ Không tìm thấy file 'Dataset_GPA_Thuc_Te_250_Responses.csv'. Vui lòng kiểm tra lại nguồn dữ liệu.")
     st.stop()
 
-# =========================================================
-# XỬ LÝ DỮ LIỆU & HUẤN LUYỆN MODEL
-# =========================================================
-data = df.copy()
+# 3. Sidebar - Nhập liệu
+st.sidebar.header("📊 Thông Số Cá Nhân")
+st.sidebar.markdown("Nhập thông tin của bạn để dự đoán")
 
-# Encode dữ liệu phân loại
-data["Làm_Thêm"] = data["Làm_Thêm"].map({"Có": 1, "Không": 0})
-data["Tham_Gia_CLB"] = data["Tham_Gia_CLB"].map({"Có": 1, "Không": 0})
-data["Hình_Thức_Học"] = data["Hình_Thức_Học"].map({"Học nhóm": 1, "Tự học": 0})
+input_data = {}
+input_data['Số_Giờ_Học_Tuần'] = st.sidebar.slider("📚 Số giờ học/tuần", 0, 60, 20)
+input_data['Số_Môn_Đang_Học'] = st.sidebar.number_input("📝 Số môn đang học", 1, 12, 5)
+input_data['Làm_Thêm'] = st.sidebar.selectbox("💼 Có đi làm thêm không?", ["Không", "Có"])
+input_data['Thời_Gian_Ngủ'] = st.sidebar.slider("😴 Thời gian ngủ (giờ/ngày)", 3, 12, 7)
+input_data['Tham_Gia_CLB'] = st.sidebar.selectbox("🤝 Tham gia CLB?", ["Không", "Có"])
+input_data['Điểm_Danh_%'] = st.sidebar.slider("📍 Tỷ lệ điểm danh (%)", 0, 100, 90)
+input_data['Hình_Thức_Học'] = st.sidebar.selectbox("📖 Hình thức học chính", ["Tự học", "Học nhóm"])
+input_data['Thời_Gian_Mạng_Xã_Hội'] = st.sidebar.slider("📱 TG dùng MXH (giờ/ngày)", 0, 10, 2)
 
-# Loại bỏ các hàng bị lỗi (nếu có) sau khi map
-data = data.dropna()
+# Chuyển đổi input sang dạng số cho model
+input_df = pd.DataFrame([input_data])
+input_df['Làm_Thêm'] = input_df['Làm_Thêm'].map({'Có': 1, 'Không': 0})
+input_df['Tham_Gia_CLB'] = input_df['Tham_Gia_CLB'].map({'Có': 1, 'Không': 0})
+input_df['Hình_Thức_Học'] = input_df['Hình_Thức_Học'].map({'Tự học': 0, 'Học nhóm': 1})
 
-X = data.drop(["GPA", "Mã_Sinh_Viên"], axis=1)
-y = data["GPA"]
+# 4. Giao diện chính
+st.title("🎓 Hệ Thống Dự Đoán & Phân Tích GPA Sinh Viên")
+st.markdown("---")
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-model = RandomForestRegressor(n_estimators=200, random_state=42)
-model.fit(X_train, y_train)
-
-# Đánh giá độ chính xác
-y_pred = model.predict(X_test)
-r2 = r2_score(y_test, y_pred)
-
-# =========================================================
-# SIDEBAR - INPUT
-# =========================================================
-st.sidebar.title("⚙️ Nhập thông tin sinh viên")
-study_hours = st.sidebar.slider("📚 Số giờ học mỗi tuần", 0, 50, 20)
-subjects = st.sidebar.slider("📖 Số môn đang học", 1, 12, 5)
-part_time = st.sidebar.selectbox("💼 Có làm thêm không?", ["Có", "Không"])
-sleep_time = st.sidebar.slider("😴 Thời gian ngủ mỗi đêm", 4, 12, 7)
-club = st.sidebar.selectbox("🎯 Có tham gia CLB?", ["Có", "Không"])
-attendance = st.sidebar.slider("🏫 Tỉ lệ đi học (%)", 0, 100, 80)
-study_method = st.sidebar.selectbox("🧠 Hình thức học", ["Tự học", "Học nhóm"])
-social_media = st.sidebar.slider("📱 Thời gian dùng MXH", 0, 15, 3)
-
-predict_button = st.sidebar.button("🚀 Dự đoán GPA")
-
-# =========================================================
-# TABS
-# =========================================================
-tab1, tab2, tab3 = st.tabs(["📈 Dự đoán kết quả", "📊 Phân tích dữ liệu (EDA)", "🕸️ So sánh"])
+tab1, tab2, tab3 = st.tabs(["🎯 Dự Đoán Kết Quả", "📈 Phân Tích Dữ Liệu (EDA)", "⚖️ So Sánh Chỉ Số"])
 
 with tab1:
-    st.subheader("🎯 Kết quả dự đoán GPA")
-    if predict_button:
-        # Encode input dựa trên lựa chọn người dùng
-        input_data = pd.DataFrame({
-            "Số_Giờ_Học_Tuần": [study_hours],
-            "Số_Môn_Đang_Học": [subjects],
-            "Làm_Thêm": [1 if part_time == "Có" else 0],
-            "Thời_Gian_Ngủ": [sleep_time],
-            "Tham_Gia_CLB": [1 if club == "Có" else 0],
-            "Điểm_Danh_%": [attendance],
-            "Hình_Thức_Học": [1 if study_method == "Học nhóm" else 0],
-            "Thời_Gian_Mạng_Xã_Hội": [social_media]
-        })
-
-        predicted_gpa = round(model.predict(input_data)[0], 2)
-        st.metric(label="📌 GPA Dự Đoán", value=f"{predicted_gpa}/4.0")
-
-        # TƯ VẤN
-        if predicted_gpa < 2.5:
-            st.error("⚠️ GPA mức thấp. Hãy tăng giờ học, giảm dùng MXH và ngủ đủ giấc.")
-        elif predicted_gpa < 3.2:
-            st.warning("📚 GPA mức khá. Bạn có thể cải thiện bằng cách tăng giờ tự học.")
-        else:
-            st.success("🏆 GPA rất tốt! Hãy duy trì phong độ này.")
+    st.subheader("Kết quả dự đoán của bạn")
+    prediction = model.predict(input_df)[0]
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.metric(label="GPA Dự Đoán", value=f"{prediction:.2f}/4.0")
+        
+        if prediction >= 3.2:
+            st.success("🌟 Loại: Giỏi/Xuất sắc")
             st.balloons()
+        elif prediction >= 2.5:
+            st.info("✅ Loại: Khá")
+        else:
+            st.warning("⚠️ Loại: Trung bình/Cần cố gắng")
             
-        st.info(f"🤖 Model: Random Forest | Accuracy R²: {round(r2, 3)}")
-    else:
-        st.warning("⬅️ Hãy nhập thông tin ở Sidebar để bắt đầu.")
+    with col2:
+        st.markdown("### 💡 Lời khuyên chuyên gia:")
+        if prediction < 2.5:
+            st.write("Cảnh báo: Bạn nên cân đối lại thời gian học tập và tăng tỷ lệ điểm danh trên lớp để cải thiện kết quả.")
+        elif prediction > 3.6:
+            st.write("Tuyệt vời! Bạn đang duy trì phong độ rất tốt. Hãy tiếp tục phát huy và chia sẻ kinh nghiệm học tập nhé.")
+        else:
+            st.write("Kết quả của bạn ở mức ổn định. Hãy thử tối ưu hóa phương pháp học hoặc giảm bớt thời gian mạng xã hội để bứt phá lên mức Giỏi.")
 
 with tab2:
-    st.subheader("📊 Phân tích tương quan")
-    col1, col2 = st.columns(2)
-    with col1:
-        fig_scatter = px.scatter(df, x="Số_Giờ_Học_Tuần", y="GPA", color="GPA", template="plotly_dark")
+    st.subheader("Phân tích các yếu tố ảnh hưởng")
+    col_eda1, col_eda2 = st.columns(2)
+    
+    with col_eda1:
+        fig_scatter = px.scatter(original_df, x="Số_Giờ_Học_Tuần", y="GPA", 
+                                 title="Tương quan giữa Giờ học và GPA",
+                                 trendline="ols", color_discrete_sequence=['#1f77b4'])
         st.plotly_chart(fig_scatter, use_container_width=True)
-    with col2:
-        importance_df = pd.DataFrame({"Feature": X.columns, "Importance": model.feature_importances_}).sort_values(by="Importance")
-        fig_imp = px.bar(importance_df, x="Importance", y="Feature", orientation="h", template="plotly_dark")
-        st.plotly_chart(fig_imp, use_container_width=True)
+        
+    with col_eda2:
+        importances = model.feature_importances_
+        feat_importances = pd.Series(importances, index=feature_cols).sort_values()
+        fig_importance = px.bar(feat_importances, orientation='h', 
+                                title="Các yếu tố quan trọng nhất (Feature Importance)",
+                                labels={'value': 'Độ quan trọng', 'index': 'Tính năng'})
+        st.plotly_chart(fig_importance, use_container_width=True)
 
 with tab3:
-    st.subheader("🕸️ Radar Chart So sánh")
-    # Chuẩn hóa giá trị để hiển thị Radar (Scale 0-100)
-    user_vals = [study_hours*2, attendance, sleep_time*8.3, (15-social_media)*6.6]
-    avg_vals = [data["Số_Giờ_Học_Tuần"].mean()*2, data["Điểm_Danh_%"].mean(), 
-                data["Thời_Gian_Ngủ"].mean()*8.3, (15-data["Thời_Gian_Mạng_Xã_Hội"].mean())*6.6]
+    st.subheader("So sánh chỉ số cá nhân với trung bình hệ thống")
     
-    categories = ["Giờ học", "Điểm danh", "Giấc ngủ", "Hạn chế MXH"]
+    # Tính toán trung bình
+    avg_values = original_df.mean(numeric_only=True)
+    
+    # Các tiêu chí so sánh
+    categories = ['Số_Giờ_Học_Tuần', 'Thời_Gian_Ngủ', 'Điểm_Danh_%', 'Thời_Gian_Mạng_Xã_Hội', 'Số_Môn_Đang_Học']
+    
+    user_vals = [input_data[c] for c in categories]
+    avg_vals = [avg_values[c] for c in categories]
+    
     fig_radar = go.Figure()
-    fig_radar.add_trace(go.Scatterpolar(r=user_vals, theta=categories, fill='toself', name='Bạn'))
-    fig_radar.add_trace(go.Scatterpolar(r=avg_vals, theta=categories, fill='toself', name='Trung bình'))
-    fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), template="plotly_dark")
+    
+    fig_radar.add_trace(go.Scatterpolar(
+        r=user_vals,
+        theta=categories,
+        fill='toself',
+        name='Của Bạn'
+    ))
+    fig_radar.add_trace(go.Scatterpolar(
+        r=avg_vals,
+        theta=categories,
+        fill='toself',
+        name='Trung bình (250 SV)'
+    ))
+    
+    fig_radar.update_layout(
+        polar=dict(radialaxis=dict(visible=True)),
+        showlegend=True,
+        title="Biểu đồ Radar so sánh chỉ số (Giá trị thực tế)"
+    )
     st.plotly_chart(fig_radar, use_container_width=True)
 
-st.markdown("---")
-st.caption("© 2026 AI GPA Predictor Dashboard | Research Project")
